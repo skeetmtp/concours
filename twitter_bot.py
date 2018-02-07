@@ -21,10 +21,11 @@ twitter_client = API(auth_handler)
 logging.basicConfig(level=logging.INFO)
 
 AVOID = ["tag", "paypal", "itune", "googleplay", "bitcoin", "iphone", "carte cadeau"]
-MANDATORY = ["rt", "follow"]
+#MANDATORY = ["rt", "follow"]
 
 last_tweet_time = 0
 last_rt_id = 0
+rt_ids = dict()
 
 
 def my_encode(text):
@@ -34,6 +35,7 @@ class PyStreamListener(StreamListener):
     def on_data(self, data):
 	global last_tweet_time
 	global last_rt_id
+	global rt_ids
         tweet = json.loads(data)
 	now = time.time()
         try:
@@ -52,41 +54,47 @@ class PyStreamListener(StreamListener):
 	    return True
 	try:
             publish = True
+	    delta_time = now - last_tweet_time
+	    if delta_time < (60*10):
+               	logging.info("SKIP delta_time {}".format(delta_time))
+		return True
+            
+	    logging.info("reading {0}".format(tweet_text))
 	
 	    if tweet_age_sec > (60*60*24*30):
-               	lgging.info("too old tweet {0} {1}".format(tweet_age_sec, created_at))
+               	logging.info("SKIP too old tweet {0} {1}".format(tweet_age_sec, created_at))
 		return True
 
 	    if retweet_count<149:
+               	logging.info("SKIP retweet_count {0} to low ".format(retweet_count))
 		return True
 
             if tweet.get('lang') and tweet.get('lang') != 'fr':
+               	logging.info("SKIP lang != fr")
                 return True
             
-	    delta_time = now - last_tweet_time
-	    if delta_time < (60*20):
-               	logging.info("too small delta_time {}".format(delta_time))
-		return True
-	    
-	    for word in MANDATORY:
-                if word not in tweet_text.lower():
-                    logging.debug("NOT FOUND \"{}\"".format(word))
-		    return True
+	    #for word in MANDATORY:
+            #    if word not in tweet_text.lower():
+            #        logging.info("SKIP missing word \"{}\"".format(word))
+	    #	    return True
 
             for word in AVOID:
                 if word in tweet_text.lower():
-                    logging.info("SKIPPED FOR {}".format(word))
+                    logging.info("SKIP avoid word {}".format(word))
                     return True
-	    if last_rt_id == orig_id:
-                logging.info("same id {}".format(orig_id))
+
+	    if orig_id in rt_ids:
+                logging.info("SKIP same id {}".format(orig_id))
                 return True
             #print json.dumps(tweet, indent=4, sort_keys=True)
 	    #publish = False
             if publish:
-	        print json.dumps(tweet, indent=4, sort_keys=True)
-                logging.info("RT {0} #{1} : {2}".format(orig_id, retweet_count, tweet_text))
+	        #print json.dumps(tweet, indent=4, sort_keys=True)
+                logging.info("RT {0}".format(orig_id))
+		rt_ids[orig_id] = True
 		last_rt_id = orig_id
                 twitter_client.retweet(orig_id)
+                logging.info("RT {0} #{1} : {2}".format(orig_id, retweet_count, tweet_text))
 		last_tweet_time = time.time()
 		for user in users:
 		  user_id = user["id"]
@@ -101,7 +109,7 @@ class PyStreamListener(StreamListener):
         return True
 
     def on_error(self, status):
-        print status
+	logging.error("status : {0}".format(status))
 
 
 if __name__ == '__main__':
